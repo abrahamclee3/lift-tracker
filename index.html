@@ -1676,7 +1676,7 @@
             const len = input.value.length;
             input.setSelectionRange(len, len);
         }
-        
+
         function openEditLiftModal(liftId) {
             const workout = getActiveWorkout();
             if (!workout) return;
@@ -1699,10 +1699,9 @@
             updateEditExerciseOptionsUI();
             hideEditAutocomplete();
             document.getElementById('edit-modal').classList.remove('hidden');
-            setTimeout(() => {
-                input.focus();
-                input.select();
-            }, 30);
+            input.focus();
+            const len = input.value.length;
+            input.setSelectionRange(len, len);
         }
 
         function closeEditModal() {
@@ -2167,7 +2166,7 @@
             });
             document.getElementById('date-cancel').addEventListener('click', closeNewWorkoutModal);
             document.getElementById('date-ok').addEventListener('click', createWorkoutFromModal);
-            document.getElementById('new-workout-name-input').addEventListener('keydown', (e) => {
+            newWorkoutInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     createWorkoutFromModal();
