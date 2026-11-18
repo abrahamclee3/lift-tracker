@@ -1504,12 +1504,15 @@
         // New Workout Modal Helpers
         function openNewWorkoutModal() {
             const input = document.getElementById('new-workout-name-input');
-            input.value = getFormattedTodayMMDDYY();
+            const clearBtn = document.getElementById('clear-new-workout-name-btn');
+            const today = getFormattedTodayMMDDYY();
+            input.value = today;
+            input.placeholder = today;
+            clearBtn.classList.toggle('hidden', !input.value);
             document.getElementById('date-modal').classList.remove('hidden');
-            setTimeout(() => {
-                input.focus();
-                input.select();
-            }, 30);
+            input.focus();
+            const len = input.value.length;
+            input.setSelectionRange(len, len);
         }
 
         function closeNewWorkoutModal() {
@@ -1669,12 +1672,11 @@
             document.getElementById('edit-exercise-options').classList.add('hidden');
             hideEditAutocomplete();
             document.getElementById('edit-modal').classList.remove('hidden');
-            setTimeout(() => {
-                input.focus();
-                input.select();
-            }, 30);
+            input.focus();
+            const len = input.value.length;
+            input.setSelectionRange(len, len);
         }
-
+        
         function openEditLiftModal(liftId) {
             const workout = getActiveWorkout();
             if (!workout) return;
