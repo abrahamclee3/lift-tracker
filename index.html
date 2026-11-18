@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Lift Tracker">
+    <meta name="theme-color" content="#4f46e5">
+    <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Lift%20Tracker%22%2C%22short_name%22%3A%22Lift%20Tracker%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f3f4f6%22%2C%22theme_color%22%3A%22%234f46e5%22%7D">
     <title>Lift Tracker</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -58,6 +64,7 @@
                     <div id="header-title-container" class="flex items-center gap-2 min-w-0">
                         <h1 id="header-title" class="text-xl font-bold tracking-tight text-gray-900 truncate">Lift Tracker</h1>
                         <i id="header-edit-icon" class="fa-solid fa-pen text-xs text-gray-400 hidden group-hover:text-indigo-600 transition-colors shrink-0"></i>
+                        <span id="offline-badge" class="hidden text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full shrink-0">Offline</span>
                     </div>
                 </div>
             </div>
@@ -78,20 +85,39 @@
                             <i class="fa-solid fa-file-import w-4 text-center text-gray-400"></i>
                             <span>Import Data</span>
                         </button>
+                        <div class="my-1 border-t border-gray-100"></div>
+                        <button type="button" id="refresh-offline-btn" class="w-full px-4 py-2 text-left text-[11px] font-medium text-gray-500 hover:bg-gray-50 flex items-center gap-2 transition-colors">
+                            <span id="offline-status-dot" class="w-2 h-2 rounded-full bg-gray-300 shrink-0"></span>
+                            <span id="offline-status-text">Checking offline cache...</span>
+                        </button>
                     </div>
                 </div>
-                <input type="file" id="import-file-input" class="hidden" accept=".json">
+                <input type="file" id="import-file-input" accept=".json,application/json" class="hidden">
             </div>
         </header>
 
-        <!-- View Container -->
-        <div class="flex-1 overflow-hidden relative">
-            
-            <!-- 1. History View (List of Workouts) -->
-            <div id="history-view" class="absolute inset-0 overflow-y-auto p-4 pb-24">
-                <div class="flex justify-between items-center mb-4">
+        <!-- Top Segmented Navigation Tabs (Workouts / Exercises) -->
+        <div id="top-tabs-bar" class="bg-white border-b border-gray-200 px-4 py-2 shrink-0 z-10">
+            <div class="grid grid-cols-2 gap-1.5 bg-gray-100 p-1 rounded-xl">
+                <button type="button" id="tab-workouts-btn" class="flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-white text-indigo-600 shadow-xs text-xs font-semibold btn-transition">
+                    <i class="fa-solid fa-dumbbell text-xs"></i>
+                    <span>Workouts</span>
+                </button>
+                <button type="button" id="tab-exercises-btn" class="flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-gray-500 hover:text-gray-800 text-xs font-medium btn-transition">
+                    <i class="fa-solid fa-chart-simple text-xs"></i>
+                    <span>Exercises</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main View Area -->
+        <div class="flex-1 relative overflow-hidden">
+
+            <!-- 1. Workouts History View -->
+            <div id="history-view" class="h-full overflow-y-auto p-4 pb-28">
+                <div class="flex justify-between items-center gap-2 mb-3">
                     <h2 class="text-lg font-bold text-gray-700">Your Workouts</h2>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1.5">
                         <button type="button" id="select-all-btn" class="hidden text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 btn-transition">
                             Select All
                         </button>
@@ -117,7 +143,7 @@
             </div>
 
             <!-- Sticky Multi-Select Action Bar -->
-            <div id="selection-action-bar" class="hidden absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 shadow-lg z-20 flex items-center justify-between gap-2">
+            <div id="selection-action-bar" class="hidden absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 pt-3 pb-12 shadow-lg z-20 flex items-center justify-between gap-2">
                 <span id="selected-count-label" class="text-sm font-semibold text-gray-700">0 selected</span>
                 <div class="flex items-center gap-2">
                     <button type="button" id="export-selected-btn" disabled class="px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl btn-transition flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none">
@@ -131,7 +157,7 @@
 
             <!-- 2. Workout View (Specific Workout's Exercises) -->
             <div id="workout-view" class="absolute inset-0 flex flex-col bg-gray-100 hidden z-10">
-                <main class="flex-1 p-4 pb-24 overflow-y-auto">
+                <main class="flex-1 p-4 pb-28 overflow-y-auto">
                     <!-- Empty State for Exercises -->
                     <div id="workout-empty-state" class="hidden flex flex-col items-center justify-center mt-12 text-center px-4">
                         <div class="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4 text-gray-400 text-2xl">
@@ -148,7 +174,7 @@
                 </main>
 
                 <!-- Sticky Bottom Bar for Adding Exercises -->
-                <div class="bg-white border-t border-gray-200 p-4 sticky bottom-0 pb-safe">
+                <div class="bg-white border-t border-gray-200 px-4 pt-3 pb-12 sticky bottom-0">
                     <form id="add-lift-form" class="flex gap-2 relative">
                         <!-- Autocomplete Dropdown -->
                         <ul id="autocomplete-list" class="hidden absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-50 divide-y divide-gray-100"></ul>
@@ -173,7 +199,7 @@
             </div>
 
             <!-- 3. Exercise History View (Grouped by Exercise Across Workouts) -->
-            <div id="exercise-history-view" class="hidden absolute inset-0 overflow-y-auto p-4 pb-24">
+            <div id="exercise-history-view" class="hidden absolute inset-0 overflow-y-auto p-4 pb-28">
                 <div class="flex justify-between items-center gap-2 mb-3">
                     <h2 class="text-lg font-bold text-gray-700 truncate">Exercise History</h2>
                     <div class="flex items-center gap-1.5 shrink-0">
@@ -220,7 +246,7 @@
             </div>
 
             <!-- Sticky Multi-Select Action Bar for Exercise History -->
-            <div id="exercise-selection-action-bar" class="hidden absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 shadow-lg z-20 flex items-center justify-between gap-2">
+            <div id="exercise-selection-action-bar" class="hidden absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 pt-3 pb-12 shadow-lg z-20 flex items-center justify-between gap-2">
                 <span id="selected-exercises-count-label" class="text-sm font-semibold text-gray-700">0 selected</span>
                 <button type="button" id="export-selected-exercises-ai-btn" disabled class="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl btn-transition shadow-sm flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> Gemini Overload Prompt
@@ -228,18 +254,6 @@
             </div>
             
         </div>
-
-        <!-- Bottom Tab Navigation Bar -->
-        <nav id="bottom-nav" class="bg-white border-t border-gray-200 px-3 py-1.5 pb-safe z-20 grid grid-cols-2 gap-2 shrink-0" aria-label="Primary Navigation">
-            <button type="button" id="tab-workouts-btn" class="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-indigo-600 bg-indigo-50/80 font-semibold btn-transition">
-                <i class="fa-regular fa-calendar-check text-base mb-0.5"></i>
-                <span class="text-[11px] tracking-tight">Workouts</span>
-            </button>
-            <button type="button" id="tab-exercises-btn" class="flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-50 font-medium btn-transition">
-                <i class="fa-solid fa-chart-simple text-base mb-0.5"></i>
-                <span class="text-[11px] tracking-tight">Exercises</span>
-            </button>
-        </nav>
     </div>
 
     <!-- New Workout Name Modal -->
@@ -787,11 +801,11 @@
             const exercisesTab = document.getElementById('tab-exercises-btn');
 
             if (currentView === 'exercise-history') {
-                workoutsTab.className = 'flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-50 font-medium btn-transition';
-                exercisesTab.className = 'flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-indigo-600 bg-indigo-50/80 font-semibold btn-transition';
+                workoutsTab.className = 'flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-gray-500 hover:text-gray-800 text-xs font-medium btn-transition';
+                exercisesTab.className = 'flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-white text-indigo-600 shadow-xs text-xs font-semibold btn-transition';
             } else {
-                workoutsTab.className = 'flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-indigo-600 bg-indigo-50/80 font-semibold btn-transition';
-                exercisesTab.className = 'flex flex-col items-center justify-center py-1.5 px-3 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-50 font-medium btn-transition';
+                workoutsTab.className = 'flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-white text-indigo-600 shadow-xs text-xs font-semibold btn-transition';
+                exercisesTab.className = 'flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-gray-500 hover:text-gray-800 text-xs font-medium btn-transition';
             }
         }
 
@@ -851,28 +865,25 @@
             const historyView = document.getElementById('history-view');
             const workoutView = document.getElementById('workout-view');
             const exerciseHistoryView = document.getElementById('exercise-history-view');
-            const bottomNav = document.getElementById('bottom-nav');
+            const topTabsBar = document.getElementById('top-tabs-bar');
             const selectionBar = document.getElementById('selection-action-bar');
             const exerciseSelectionBar = document.getElementById('exercise-selection-action-bar');
 
             historyView.classList.toggle('hidden', viewName !== 'history');
             workoutView.classList.toggle('hidden', viewName !== 'workout');
             exerciseHistoryView.classList.toggle('hidden', viewName !== 'exercise-history');
+            topTabsBar.classList.toggle('hidden', viewName === 'workout');
 
             if (viewName === 'workout') {
-                bottomNav.classList.add('hidden');
                 selectionBar.classList.add('hidden');
                 exerciseSelectionBar.classList.add('hidden');
             } else if (viewName === 'history' && isSelectionMode) {
-                bottomNav.classList.add('hidden');
                 selectionBar.classList.remove('hidden');
                 exerciseSelectionBar.classList.add('hidden');
             } else if (viewName === 'exercise-history' && isExerciseSelectionMode) {
-                bottomNav.classList.add('hidden');
                 selectionBar.classList.add('hidden');
                 exerciseSelectionBar.classList.remove('hidden');
             } else {
-                bottomNav.classList.remove('hidden');
                 selectionBar.classList.add('hidden');
                 exerciseSelectionBar.classList.add('hidden');
             }
@@ -895,13 +906,10 @@
             if (!isSelectionMode) {
                 selectedWorkoutIds.clear();
             }
-            const bottomNav = document.getElementById('bottom-nav');
             const selectionBar = document.getElementById('selection-action-bar');
             if (currentView === 'history' && isSelectionMode) {
-                bottomNav.classList.add('hidden');
                 selectionBar.classList.remove('hidden');
             } else if (currentView === 'history') {
-                bottomNav.classList.remove('hidden');
                 selectionBar.classList.add('hidden');
             }
             renderHistoryView();
@@ -1219,13 +1227,10 @@
             if (!isExerciseSelectionMode) {
                 selectedExerciseKeys.clear();
             }
-            const bottomNav = document.getElementById('bottom-nav');
             const exerciseSelectionBar = document.getElementById('exercise-selection-action-bar');
             if (currentView === 'exercise-history' && isExerciseSelectionMode) {
-                bottomNav.classList.add('hidden');
                 exerciseSelectionBar.classList.remove('hidden');
             } else if (currentView === 'exercise-history') {
-                bottomNav.classList.remove('hidden');
                 exerciseSelectionBar.classList.add('hidden');
             }
             renderExerciseHistoryView();
@@ -2619,6 +2624,82 @@
                     renderExerciseHistoryView();
                 }
             });
+
+            // Network & Offline Service Worker Setup
+            const OFFLINE_CACHE = 'lift-tracker-offline-v2';
+            const offlineBadge = document.getElementById('offline-badge');
+            const offlineStatusDot = document.getElementById('offline-status-dot');
+            const offlineStatusText = document.getElementById('offline-status-text');
+            const refreshOfflineBtn = document.getElementById('refresh-offline-btn');
+
+            function updateNetworkStatus() {
+                if (offlineBadge) {
+                    offlineBadge.classList.toggle('hidden', navigator.onLine);
+                }
+            }
+
+            window.addEventListener('online', updateNetworkStatus);
+            window.addEventListener('offline', updateNetworkStatus);
+            updateNetworkStatus();
+
+            async function warmOfflineCache(showFeedback = false) {
+                if (!('caches' in window)) return false;
+                try {
+                    const cache = await caches.open(OFFLINE_CACHE);
+                    await cache.addAll(['./', './index.html']);
+                    const optionalUrls = [
+                        'https://cdn.tailwindcss.com',
+                        'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+                        'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+                    ];
+                    await Promise.allSettled(optionalUrls.map(url => cache.add(url)));
+                    if (showFeedback) {
+                        showAlert('Offline Cache Updated', 'Lift Tracker is saved on this device and ready for Airplane Mode.');
+                    }
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            }
+
+            if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+                navigator.serviceWorker.register('./sw.js', { scope: './' })
+                    .then(async (reg) => {
+                        await warmOfflineCache(false);
+                        const markReady = () => {
+                            if (offlineStatusDot) offlineStatusDot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0';
+                            if (offlineStatusText) offlineStatusText.textContent = 'Offline ready (tap to refresh)';
+                        };
+                        if (reg.active) {
+                            markReady();
+                        } else if (reg.installing || reg.waiting) {
+                            const worker = reg.installing || reg.waiting;
+                            worker.addEventListener('statechange', () => {
+                                if (worker.state === 'activated') markReady();
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        if (offlineStatusDot) offlineStatusDot.className = 'w-2 h-2 rounded-full bg-red-400 shrink-0';
+                        if (offlineStatusText) offlineStatusText.textContent = 'sw.js missing in repo';
+                    });
+            } else if (offlineStatusText) {
+                offlineStatusText.textContent = 'Online mode';
+            }
+
+            if (refreshOfflineBtn) {
+                refreshOfflineBtn.addEventListener('click', async () => {
+                    toggleMoreMenu(false);
+                    if (!navigator.onLine) {
+                        showAlert('Currently Offline', 'You are already offline. Your local workouts are still saved on this phone.');
+                        return;
+                    }
+                    const ok = await warmOfflineCache(true);
+                    if (!ok) {
+                        showAlert('Cache Failed', 'Make sure both index.html and sw.js are in your GitHub repository.');
+                    }
+                });
+            }
         });
     </script>
 </body>
