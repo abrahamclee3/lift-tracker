@@ -2155,6 +2155,16 @@
             });
 
             // New Workout Modal Listeners
+            const newWorkoutInput = document.getElementById('new-workout-name-input');
+            const clearNewWorkoutBtn = document.getElementById('clear-new-workout-name-btn');
+            newWorkoutInput.addEventListener('input', () => {
+                clearNewWorkoutBtn.classList.toggle('hidden', !newWorkoutInput.value);
+            });
+            clearNewWorkoutBtn.addEventListener('click', () => {
+                newWorkoutInput.value = '';
+                clearNewWorkoutBtn.classList.add('hidden');
+                newWorkoutInput.focus();
+            });
             document.getElementById('date-cancel').addEventListener('click', closeNewWorkoutModal);
             document.getElementById('date-ok').addEventListener('click', createWorkoutFromModal);
             document.getElementById('new-workout-name-input').addEventListener('keydown', (e) => {
