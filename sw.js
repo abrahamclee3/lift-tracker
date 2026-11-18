@@ -1,54 +1,51 @@
-const CACHE_NAME = 'lift-tracker-offline-v2';
+const CACHE_NAME = 'lift-tracker-offline-v3';
+const CORE_ASSETS = [
+  './',
+  './index.html',
+  './apple-touch-icon.png'
+];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Activate new SW immediately
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(['./', './index.html']))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      )
+    ).then(() => self.clients.claim()) // Take control immediately
   );
 });
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  // Always serve the cached app shell immediately on page navigation
-  if (event.request.mode === 'navigate') {
+  // Network-First for page navigations (index.html) so GitHub updates show up right away
+  if (event.request.mode === 'navigate' || event.request.url.endsWith('index.html')) {
     event.respondWith(
-      caches.match('./index.html', { ignoreSearch: true })
-        .then((cached) => {
-          const networkUpdate = fetch(event.request)
-            .then((res) => {
-              if (res && res.ok) {
-                const copy = res.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', copy));
-              }
-              return res;
-            })
-            .catch(() => cached);
-          return cached || networkUpdate;
+      fetch(event.request, { cache: 'no-store' })
+        .then((networkResponse) => {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          return networkResponse;
         })
+        .catch(() => caches.match(event.request) || caches.match('./index.html'))
     );
     return;
   }
 
-  // Cache-first for scripts, fonts, and icons
+  // Cache-First for static assets (CDN scripts, icons, fonts)
   event.respondWith(
-    caches.match(event.request, { ignoreSearch: true }).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
-        if (res && (res.ok || res.type === 'opaque')) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return res;
+    caches.match(event.request).then((cached) => {
+      return cached || fetch(event.request).then((networkResponse) => {
+        const copy = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return networkResponse;
       });
     })
   );
