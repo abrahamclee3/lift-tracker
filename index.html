@@ -261,7 +261,12 @@
         <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl transform transition-transform">
             <h3 class="text-lg font-bold text-gray-900 mb-1">New Workout</h3>
             <p class="text-xs text-gray-500 mb-4">Name your workout session or keep today's date.</p>
-            <input type="text" id="new-workout-name-input" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-base mb-5 focus:bg-white" placeholder="MM/DD/YY" autocomplete="off">
+            <div class="relative mb-5">
+                <input type="text" id="new-workout-name-input" class="w-full bg-gray-50 border border-gray-300 rounded-xl pl-4 pr-10 py-3 text-base focus:bg-white" placeholder="MM/DD/YY" autocomplete="off">
+                <button type="button" id="clear-new-workout-name-btn" class="text-gray-400 hover:text-gray-600 p-2 absolute right-1.5 top-1/2 -translate-y-1/2" aria-label="Clear workout name">
+                    <i class="fa-solid fa-circle-xmark text-sm"></i>
+                </button>
+            </div>
             <div class="flex gap-3 justify-end">
                 <button type="button" id="date-cancel" class="px-5 py-2.5 text-gray-700 font-medium bg-gray-100 hover:bg-gray-200 rounded-xl btn-transition">Cancel</button>
                 <button type="button" id="date-ok" class="px-5 py-2.5 text-white font-medium bg-indigo-600 hover:bg-indigo-700 rounded-xl btn-transition shadow-sm">Create</button>
