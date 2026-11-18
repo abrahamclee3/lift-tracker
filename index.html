@@ -2641,7 +2641,7 @@
             });
 
             // Network & Offline Service Worker Setup
-            const OFFLINE_CACHE = 'lift-tracker-offline-v2';
+            const OFFLINE_CACHE = 'lift-tracker-offline-v3';
             const offlineBadge = document.getElementById('offline-badge');
             const offlineStatusDot = document.getElementById('offline-status-dot');
             const offlineStatusText = document.getElementById('offline-status-text');
@@ -2661,16 +2661,22 @@
                 if (!('caches' in window)) return false;
                 try {
                     const cache = await caches.open(OFFLINE_CACHE);
-                    await cache.addAll(['./', './index.html']);
+                    // Bypass Safari HTTP cache with cache: 'reload'
+                    const freshPages = ['./', './index.html', './apple-touch-icon.png'];
+                    await Promise.all(
+                        freshPages.map(async (url) => {
+                            const res = await fetch(url, { cache: 'reload' });
+                            if (res.ok) await cache.put(url, res);
+                        })
+                    );
                     const optionalUrls = [
-                        './apple-touch-icon.png',
                         'https://cdn.tailwindcss.com',
                         'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
                         'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
                     ];
                     await Promise.allSettled(optionalUrls.map(url => cache.add(url)));
                     if (showFeedback) {
-                        showAlert('Offline Cache Updated', 'Lift Tracker is saved on this device and ready for Airplane Mode.');
+                        window.location.reload();
                     }
                     return true;
                 } catch (_) {
