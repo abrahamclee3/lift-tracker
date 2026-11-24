@@ -989,4 +989,563 @@
             const exportAiBtn = document.getElementById('export-selected-exercises-ai-btn');
 
             if (allGroups.length === 0) {
-                toggleBtn.classList.add('hidden'); selectAllBtn.classList.add('hidden'); expandAllBtn.classList
+                toggleBtn.classList.add('hidden'); selectAllBtn.classList.add('hidden'); expandAllBtn.classList.add('hidden'); return;
+            }
+            toggleBtn.classList.remove('hidden');
+            toggleBtn.textContent = isExerciseSelectionMode ? 'Cancel' : 'Select';
+
+            if (isExerciseSelectionMode) {
+                expandAllBtn.classList.add('hidden'); selectAllBtn.classList.remove('hidden');
+                const allVisibleSelected = filteredGroups.length > 0 && filteredGroups.every(g => selectedExerciseKeys.has(g.key));
+                selectAllBtn.textContent = allVisibleSelected ? 'Deselect All' : 'Select All';
+            } else {
+                selectAllBtn.classList.add('hidden'); expandAllBtn.classList.remove('hidden');
+            }
+            const count = selectedExerciseKeys.size;
+            countLabel.textContent = `${count} selected`;
+            exportAiBtn.disabled = count === 0;
+        }
+
+        function renderExerciseHistoryView() {
+            const listEl = document.getElementById('exercise-history-list');
+            const emptyEl = document.getElementById('exercise-history-empty-state');
+            const searchContainer = document.getElementById('exercise-search-container');
+            const expandAllBtn = document.getElementById('toggle-expand-all-exercises-btn');
+            const allGroups = buildExerciseHistoryGroups();
+            
+            const validKeys = new Set(allGroups.map(g => g.key));
+            for (const key of Array.from(selectedExerciseKeys)) {
+                if (!validKeys.has(key)) selectedExerciseKeys.delete(key);
+            }
+
+            if (allGroups.length === 0) {
+                listEl.innerHTML = ''; emptyEl.classList.remove('hidden'); searchContainer.classList.add('hidden');
+                updateExerciseSelectionToolbar([], []);
+                return;
+            }
+            emptyEl.classList.add('hidden'); searchContainer.classList.remove('hidden');
+
+            const query = exerciseSearchQuery.trim().toLowerCase();
+            const filtered = query ? allGroups.filter(g => g.name.toLowerCase().includes(query)) : allGroups;
+            updateExerciseSelectionToolbar(allGroups, filtered);
+
+            const allExpanded = filtered.length > 0 && filtered.every(g => expandedExerciseKeys.has(g.key));
+            expandAllBtn.textContent = allExpanded ? 'Collapse All' : 'Expand All';
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = `<div class="bg-white rounded-2xl p-6 text-center border border-gray-200/80"><p class="text-sm text-gray-500">No exercises match "${escapeHtml(exerciseSearchQuery)}".</p></div>`;
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(group => {
+                const isExpanded = !isExerciseSelectionMode && expandedExerciseKeys.has(group.key);
+                const isSelected = selectedExerciseKeys.has(group.key);
+                let statsBadgesHtml = '';
+                if (group.mode === 'strength') {
+                    const sortedReps = Array.from(group.maxByReps.entries()).sort((a, b) => a[0] - b[0]);
+                    if (sortedReps.length > 0) {
+                        statsBadgesHtml = `<div class="mt-2.5 pt-2.5 border-t border-gray-100"><p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Max Weight by Reps</p><div class="flex flex-wrap gap-1.5">` + 
+                            sortedReps.map(([reps, best]) => `<span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-semibold px-2.5 py-1 rounded-lg"><span>${reps} ${reps === 1 ? 'rep' : 'reps'}:</span><span class="font-bold text-indigo-900">${best.weight} ${escapeHtml(best.unit)}</span></span>`).join('') + `</div></div>`;
+                    }
+                } else {
+                    const parts = [];
+                    if (group.bestCardio.maxDist > 0) parts.push(`Best Dist: <strong class="text-indigo-900">${group.bestCardio.maxDist} ${escapeHtml(group.bestCardio.distUnit)}</strong>`);
+                    if (group.bestCardio.maxTime) parts.push(`Longest: <strong class="text-indigo-900">${escapeHtml(group.bestCardio.maxTime)}</strong>`);
+                    if (parts.length > 0) statsBadgesHtml = `<div class="mt-2.5 pt-2.5 border-t border-gray-100 flex flex-wrap gap-1.5">${parts.map(p => `<span class="inline-block bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-medium px-2.5 py-1 rounded-lg">${p}</span>`).join('')}</div>`;
+                }
+
+                const sessionsHtml = isExpanded ? `<div class="mt-3 pt-3 border-t border-gray-100 space-y-2.5">${group.sessions.map(sess => {
+                    const setsText = sess.sets.length === 0 ? '<span class="text-xs text-gray-400 italic">No sets logged</span>' : sess.sets.map((s, idx) => {
+                        if (sess.mode === 'cardio') {
+                            const segs = []; if (s.time) segs.push(escapeHtml(s.time)); if (s.distance) segs.push(`${escapeHtml(s.distance)} ${escapeHtml(sess.unit)}`);
+                            return `<span class="inline-block bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded-md">#${idx + 1}: ${segs.join(' • ')}</span>`;
+                        }
+                        return `<span class="inline-block bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded-md">${escapeHtml(s.weight || '0')} ${escapeHtml(sess.unit)} × ${escapeHtml(s.reps || '0')}</span>`;
+                    }).join(' ');
+
+                    return `<div class="bg-gray-50 rounded-xl p-2.5 border border-gray-200/60"><div class="flex items-center justify-between gap-2 mb-1.5"><button type="button" data-action="open-workout-from-history" data-workout-id="${escapeHtml(sess.workoutId)}" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 truncate"><span>${escapeHtml(sess.workoutName)}</span><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></button><span class="text-[11px] text-gray-400 shrink-0">${sess.sets.length} ${sess.mode === 'cardio' ? (sess.sets.length === 1 ? 'entry' : 'entries') : (sess.sets.length === 1 ? 'set' : 'sets')}</span></div><div class="flex flex-wrap gap-1.5">${setsText}</div></div>`;
+                }).join('')}</div>` : '';
+
+                return `
+                    <div data-exercise-key="${escapeHtml(group.key)}" class="exercise-history-card bg-white rounded-2xl p-4 shadow-xs border ${isSelected && isExerciseSelectionMode ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/20' : 'border-gray-200/80 hover:border-indigo-300'} transition-all ${isExerciseSelectionMode ? 'cursor-pointer btn-transition' : ''}">
+                        <div data-action="toggle-exercise-group" data-exercise-key="${escapeHtml(group.key)}" class="flex items-center justify-between gap-2.5 cursor-pointer select-none">
+                            <div class="flex items-center gap-3 min-w-0 flex-1">
+                                ${isExerciseSelectionMode ? `<div class="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 bg-white'}">${isSelected ? '<i class="fa-solid fa-check text-[10px]"></i>' : ''}</div>` : ''}
+                                <h3 class="text-base font-bold text-gray-900 truncate">${escapeHtml(group.name)}</h3>
+                            </div>
+                            <span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 transition-colors shrink-0">
+                                <span>${group.sessions.length} ${group.sessions.length === 1 ? 'workout' : 'workouts'}</span>
+                                ${!isExerciseSelectionMode ? `<i class="fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} text-[10px]"></i>` : ''}
+                            </span>
+                        </div>
+                        ${statsBadgesHtml}
+                        ${sessionsHtml}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getKnownExercisesCatalog() {
+            const catalog = new Map();
+            const sorted = [...workouts].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            for (const w of sorted) {
+                for (const l of (w.lifts || [])) {
+                    const key = l.name.trim().toLowerCase();
+                    if (key) catalog.set(key, { name: l.name, mode: l.mode === 'cardio' ? 'cardio' : 'strength', unit: l.unit || (l.mode === 'cardio' ? 'mi' : 'lb') });
+                }
+            }
+            return Array.from(catalog.values());
+        }
+
+        function renderAutocompleteSuggestions(inputEl, listEl, excludeExactLower = '') {
+            const raw = inputEl.value.trim();
+            if (!raw) { listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+            const query = raw.toLowerCase();
+            if (excludeExactLower && query === excludeExactLower) { listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+            
+            const matches = getKnownExercisesCatalog().filter(item => item.name.toLowerCase().includes(query) && item.name.toLowerCase() !== query);
+            if (matches.length === 0) { listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+
+            listEl.innerHTML = matches.slice(0, 6).map(item => {
+                const idx = item.name.toLowerCase().indexOf(query);
+                const before = escapeHtml(item.name.slice(0, idx));
+                const matchText = escapeHtml(item.name.slice(idx, idx + query.length));
+                const after = escapeHtml(item.name.slice(idx + query.length));
+                return `<li data-suggestion-name="${escapeHtml(item.name)}" data-suggestion-mode="${escapeHtml(item.mode)}" data-suggestion-unit="${escapeHtml(item.unit)}" class="px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 cursor-pointer flex items-center justify-between gap-2"><span class="truncate">${before}<strong class="text-indigo-600 font-bold">${matchText}</strong>${after}</span><span class="text-[11px] font-semibold uppercase text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md shrink-0">${escapeHtml(item.unit)}</span></li>`;
+            }).join('');
+            listEl.classList.remove('hidden');
+        }
+
+        function updateAutocomplete() { renderAutocompleteSuggestions(document.getElementById('new-lift-name'), document.getElementById('autocomplete-list')); }
+        function hideAutocomplete() { document.getElementById('autocomplete-list').classList.add('hidden'); document.getElementById('autocomplete-list').innerHTML = ''; }
+        function updateEditAutocomplete() { 
+            if (editState.type !== 'lift') { hideEditAutocomplete(); return; }
+            renderAutocompleteSuggestions(document.getElementById('edit-name-input'), document.getElementById('edit-autocomplete-list'), editState.originalNameLower); 
+        }
+        function hideEditAutocomplete() { document.getElementById('edit-autocomplete-list').classList.add('hidden'); document.getElementById('edit-autocomplete-list').innerHTML = ''; }
+
+        function openNewWorkoutModal() {
+            const input = document.getElementById('new-workout-name-input');
+            const today = getFormattedTodayMMDDYY();
+            input.value = today; input.placeholder = today;
+            document.getElementById('clear-new-workout-name-btn').classList.toggle('hidden', !input.value);
+            document.getElementById('date-modal').classList.remove('hidden');
+            input.focus(); input.setSelectionRange(input.value.length, input.value.length);
+        }
+        function closeNewWorkoutModal() { document.getElementById('date-modal').classList.add('hidden'); }
+        function createWorkoutFromModal() {
+            const name = document.getElementById('new-workout-name-input').value.trim() || getFormattedTodayMMDDYY();
+            const newWorkout = { id: generateId(), name, createdAt: Date.now(), lifts: [] };
+            workouts.unshift(newWorkout);
+            saveWorkouts(); closeNewWorkoutModal(); switchView('workout', newWorkout.id);
+        }
+
+        function updateExerciseTypeModalUI() {
+            const isCardio = pendingExerciseMode === 'cardio';
+            const activeClass = 'p-3.5 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 flex flex-col items-center justify-center gap-1.5 btn-transition';
+            const inactiveClass = 'p-3.5 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-600 flex flex-col items-center justify-center gap-1.5 btn-transition';
+            
+            document.getElementById('mode-cardio-btn').className = isCardio ? activeClass : inactiveClass;
+            document.getElementById('mode-strength-btn').className = !isCardio ? activeClass : inactiveClass;
+            
+            document.getElementById('strength-units-group').classList.toggle('hidden', isCardio);
+            document.getElementById('cardio-units-group').classList.toggle('hidden', !isCardio);
+            document.getElementById('unit-selection-label').textContent = isCardio ? 'Distance Unit' : 'Weight Unit';
+
+            document.querySelectorAll('#exercise-type-modal .unit-option-btn').forEach(btn => {
+                const isSelected = btn.getAttribute('data-unit') === pendingExerciseUnit;
+                btn.className = isSelected ? 'unit-option-btn py-2.5 px-4 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold text-sm btn-transition' : 'unit-option-btn py-2.5 px-4 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-600 font-bold text-sm btn-transition';
+            });
+        }
+        function openExerciseTypeModal(rawName) {
+            const formattedName = formatExerciseName(rawName);
+            if (!formattedName) return;
+            pendingExerciseName = formattedName;
+            const existing = getKnownExercisesCatalog().find(c => c.name.toLowerCase() === formattedName.toLowerCase());
+            if (existing) { pendingExerciseMode = existing.mode; pendingExerciseUnit = existing.unit; }
+            else { pendingExerciseMode = 'strength'; pendingExerciseUnit = 'lb'; }
+
+            document.getElementById('exercise-type-target-name').textContent = formattedName;
+            updateExerciseTypeModalUI();
+            document.getElementById('exercise-type-modal').classList.remove('hidden');
+        }
+        function closeExerciseTypeModal() { document.getElementById('exercise-type-modal').classList.add('hidden'); pendingExerciseName = ''; }
+        function confirmAddExercise() {
+            const workout = getActiveWorkout();
+            if (!workout || !pendingExerciseName) { closeExerciseTypeModal(); return; }
+            const firstSet = pendingExerciseMode === 'cardio' ? { id: generateId(), time: '', distance: '' } : { id: generateId(), weight: '', reps: '' };
+            workout.lifts.push({ id: generateId(), name: pendingExerciseName, mode: pendingExerciseMode, unit: pendingExerciseUnit, sets: [firstSet] });
+            saveWorkouts();
+            document.getElementById('new-lift-name').value = '';
+            hideAutocomplete(); closeExerciseTypeModal(); renderWorkoutView();
+        }
+
+        function updateEditExerciseOptionsUI() {
+            const isCardio = editState.mode === 'cardio';
+            const activeClass = 'p-3 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 flex flex-col items-center justify-center gap-1 btn-transition';
+            const inactiveClass = 'p-3 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-600 flex flex-col items-center justify-center gap-1 btn-transition';
+            
+            document.getElementById('edit-mode-cardio-btn').className = isCardio ? activeClass : inactiveClass;
+            document.getElementById('edit-mode-strength-btn').className = !isCardio ? activeClass : inactiveClass;
+            document.getElementById('edit-strength-units-group').classList.toggle('hidden', isCardio);
+            document.getElementById('edit-cardio-units-group').classList.toggle('hidden', !isCardio);
+            document.getElementById('edit-unit-selection-label').textContent = isCardio ? 'Distance Unit' : 'Weight Unit';
+
+            document.querySelectorAll('#edit-modal .edit-unit-option-btn').forEach(btn => {
+                const isSelected = btn.getAttribute('data-unit') === editState.unit;
+                btn.className = isSelected ? 'edit-unit-option-btn py-2.5 px-4 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 font-bold text-sm btn-transition' : 'edit-unit-option-btn py-2.5 px-4 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-600 font-bold text-sm btn-transition';
+            });
+        }
+        function openEditWorkoutModal() {
+            const workout = getActiveWorkout(); if (!workout) return;
+            editState = { type: 'workout', workoutId: workout.id, liftId: null, originalNameLower: workout.name.trim().toLowerCase(), mode: 'strength', unit: 'lb' };
+            document.getElementById('edit-modal-title').textContent = 'Rename Workout';
+            document.getElementById('edit-name-input').value = workout.name;
+            document.getElementById('edit-exercise-options').classList.add('hidden');
+            hideEditAutocomplete(); document.getElementById('edit-modal').classList.remove('hidden');
+        }
+        function openEditLiftModal(liftId) {
+            const workout = getActiveWorkout(); if (!workout) return;
+            const lift = workout.lifts.find(l => l.id === liftId); if (!lift) return;
+            editState = { type: 'lift', workoutId: workout.id, liftId: lift.id, originalNameLower: lift.name.trim().toLowerCase(), mode: lift.mode === 'cardio' ? 'cardio' : 'strength', unit: lift.unit || (lift.mode === 'cardio' ? 'mi' : 'lb') };
+            document.getElementById('edit-modal-title').textContent = 'Edit Exercise';
+            document.getElementById('edit-name-input').value = lift.name;
+            document.getElementById('edit-exercise-options').classList.remove('hidden');
+            updateEditExerciseOptionsUI(); hideEditAutocomplete(); document.getElementById('edit-modal').classList.remove('hidden');
+        }
+        function closeEditModal() { document.getElementById('edit-modal').classList.add('hidden'); hideEditAutocomplete(); }
+        function saveEditModal() {
+            const rawVal = document.getElementById('edit-name-input').value.trim();
+            if (!rawVal) { closeEditModal(); return; }
+            if (editState.type === 'workout') {
+                const workout = workouts.find(w => w.id === editState.workoutId);
+                if (workout) { workout.name = rawVal; saveWorkouts(); updateHeaderUI(); }
+            } else if (editState.type === 'lift') {
+                const workout = workouts.find(w => w.id === editState.workoutId);
+                const lift = workout?.lifts.find(l => l.id === editState.liftId);
+                if (lift) {
+                    const prevMode = lift.mode === 'cardio' ? 'cardio' : 'strength';
+                    lift.name = formatExerciseName(rawVal); lift.mode = editState.mode; lift.unit = editState.unit;
+                    if (prevMode !== editState.mode && Array.isArray(lift.sets)) {
+                        lift.sets = lift.sets.map(s => editState.mode === 'cardio' ? { id: s.id || generateId(), time: '', distance: '' } : { id: s.id || generateId(), weight: '', reps: '' });
+                    }
+                    saveWorkouts(); renderWorkoutView();
+                }
+            }
+            closeEditModal();
+        }
+
+        function sanitizeExportFilename(rawName, extension = '.json') {
+            let clean = String(rawName ?? '').trim().replace(/\.(json|txt)$/i, '').replace(/[^a-zA-Z0-9_\-\s]/g, '').replace(/\s+/g, '-');
+            return `${clean || `lift-tracker-backup-${getFormattedTodayMMDDYY().replace(/\//g, '-')}`}${extension}`;
+        }
+        function performJsonDownload(workoutsList, rawFilename) {
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(workoutsList, null, 2)], { type: 'application/json' }));
+            a.download = sanitizeExportFilename(rawFilename, '.json'); document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+        function performTextDownload(textContent, rawFilename) {
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([textContent], { type: 'text/plain;charset=utf-8' }));
+            a.download = sanitizeExportFilename(rawFilename, '.txt'); document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+        function openExportModal(itemsToExport, format = 'json', itemLabel = 'workout') {
+            if (!Array.isArray(itemsToExport) || itemsToExport.length === 0) return showAlert('Nothing to Export', 'There is nothing selected to export.');
+            pendingExportWorkouts = itemsToExport; pendingExportFormat = format;
+            const isTxt = format === 'txt';
+            const prefix = isTxt ? (itemLabel === 'exercise' ? 'lift-tracker-exercise-overload' : 'lift-tracker-ai-summary') : 'lift-tracker-backup';
+            document.getElementById('export-modal-subtitle').textContent = `Exporting ${itemsToExport.length} ${itemsToExport.length === 1 ? itemLabel : `${itemLabel}s`} as a ${isTxt ? 'text summary' : 'JSON backup'}.`;
+            document.getElementById('export-filename-input').value = `${prefix}-${getFormattedTodayMMDDYY().replace(/\//g, '-')}`;
+            const extBadge = document.querySelector('#export-modal span'); if (extBadge) extBadge.textContent = isTxt ? '.txt' : '.json';
+            document.getElementById('export-modal').classList.remove('hidden');
+        }
+        function closeExportModal() { document.getElementById('export-modal').classList.add('hidden'); pendingExportWorkouts = null; }
+
+        function generateAiWorkoutText(selectedWorkouts, includePrompt = true) {
+            const lines = []; const chronological = [...selectedWorkouts].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            if (includePrompt) { lines.push('Here is my recent workout history. Please analyze my exercises, weights, reps, and volume, and help me plan my next Push, Pull, or Leg session using these same exercises with progressive overload targets so I can steadily increase my numbers across the board.'); lines.push(''); }
+            lines.push(`=== WORKOUT HISTORY (${chronological.length} ${chronological.length === 1 ? 'Session' : 'Sessions'}) ===\n`);
+            for (const workout of chronological) {
+                lines.push(`## Workout: ${workout.name}`);
+                if (!workout.lifts || workout.lifts.length === 0) { lines.push('- (No exercises recorded)\n'); continue; }
+                for (const lift of workout.lifts) {
+                    const unit = lift.unit || (lift.mode === 'cardio' ? 'mi' : 'lb');
+                    lines.push(`- ${lift.name}:`);
+                    if (!lift.sets || lift.sets.length === 0) { lines.push('  - (No sets recorded)'); continue; }
+                    lift.sets.forEach((s, idx) => {
+                        if (lift.mode === 'cardio') { const segs = []; if (s.time) segs.push(`Time ${s.time}`); if (s.distance) segs.push(`Distance ${s.distance} ${unit}`); lines.push(`  - Entry ${idx + 1}: ${segs.join(' | ') || 'Logged'}`); }
+                        else lines.push(`  - Set ${idx + 1}: ${s.weight || '0'} ${unit} x ${s.reps || '0'} reps`);
+                    });
+                }
+                lines.push('');
+            }
+            return lines.join('\n').trim();
+        }
+
+        function generateAiExerciseText(selectedGroups, includePrompt = true) {
+            const lines = [];
+            if (includePrompt) { lines.push('Here is my historical performance for specific exercises, including my max weight PRs per rep count and session-by-session progression. Please analyze my strength/endurance trends, spot any plateaus, and build a targeted progressive overload plan for my next few sessions with concrete weight, rep, and set targets to steadily increase these numbers.'); lines.push(''); }
+            lines.push(`=== EXERCISE PROGRESSION HISTORY (${selectedGroups.length} ${selectedGroups.length === 1 ? 'Exercise' : 'Exercises'}) ===\n`);
+            for (const group of selectedGroups) {
+                lines.push(`## Exercise: ${group.name}`);
+                if (group.mode === 'strength') {
+                    const sortedReps = Array.from(group.maxByReps.entries()).sort((a, b) => a[0] - b[0]);
+                    if (sortedReps.length > 0) { lines.push('Max Weight by Reps:'); for (const [reps, best] of sortedReps) lines.push(`- ${reps} ${reps === 1 ? 'rep' : 'reps'}: ${best.weight} ${best.unit}`); }
+                } else {
+                    const bestParts = []; if (group.bestCardio.maxDist > 0) bestParts.push(`Best Distance: ${group.bestCardio.maxDist} ${group.bestCardio.distUnit}`); if (group.bestCardio.maxTime) bestParts.push(`Longest Time: ${group.bestCardio.maxTime}`);
+                    if (bestParts.length > 0) lines.push(`Personal Bests: ${bestParts.join(' | ')}`);
+                }
+                lines.push('Session-by-Session History (Oldest to Newest):');
+                [...group.sessions].reverse().forEach(sess => {
+                    lines.push(`- ${sess.workoutName}:`);
+                    if (!sess.sets || sess.sets.length === 0) { lines.push('  - (No sets recorded)'); return; }
+                    sess.sets.forEach((s, idx) => {
+                        if (sess.mode === 'cardio') { const segs = []; if (s.time) segs.push(`Time ${s.time}`); if (s.distance) segs.push(`Distance ${s.distance} ${sess.unit}`); lines.push(`  - Entry ${idx + 1}: ${segs.join(' | ')}`); }
+                        else lines.push(`  - Set ${idx + 1}: ${s.weight || '0'} ${sess.unit} x ${s.reps || '0'} reps`);
+                    });
+                });
+                lines.push('');
+            }
+            return lines.join('\n').trim();
+        }
+
+        function openExportChoiceModal(workoutsToExport) {
+            if (!Array.isArray(workoutsToExport) || workoutsToExport.length === 0) return showAlert('Nothing to Export', 'Please select at least one workout to export.');
+            aiExportState = { type: 'workouts', items: workoutsToExport };
+            document.getElementById('export-choice-subtitle').textContent = `Exporting ${workoutsToExport.length} selected ${workoutsToExport.length === 1 ? 'workout' : 'workouts'}.`;
+            document.getElementById('export-choice-modal').classList.remove('hidden');
+        }
+        function closeExportChoiceModal() { document.getElementById('export-choice-modal').classList.add('hidden'); }
+        function refreshAiExportTextarea() {
+            const includePrompt = document.getElementById('ai-include-prompt-checkbox').checked;
+            document.getElementById('ai-export-textarea').value = aiExportState.type === 'exercises' ? generateAiExerciseText(aiExportState.items, includePrompt) : generateAiWorkoutText(aiExportState.items, includePrompt);
+        }
+        function openAiExportModal(itemsToExport, exportType = 'workouts') {
+            aiExportState = { type: exportType, items: itemsToExport };
+            document.getElementById('ai-export-subtitle').textContent = `${itemsToExport.length} ${exportType === 'exercises' ? (itemsToExport.length === 1 ? 'exercise' : 'exercises') : (itemsToExport.length === 1 ? 'workout' : 'workouts')} formatted for Gemini progressive overload coaching.`;
+            refreshAiExportTextarea(); document.getElementById('ai-export-modal').classList.remove('hidden');
+        }
+        function closeAiExportModal() { document.getElementById('ai-export-modal').classList.add('hidden'); }
+
+        function getWorkoutContentFingerprint(w) { return JSON.stringify({ name: w.name, lifts: (w.lifts || []).map(l => ({ name: l.name, mode: l.mode, unit: l.unit, sets: (l.sets || []).map(s => l.mode === 'cardio' ? { time: s.time, distance: s.distance } : { weight: s.weight, reps: s.reps }) })) }); }
+        function cloneWorkoutWithFreshIds(w) { return { ...w, id: generateId(), lifts: (w.lifts || []).map(l => ({ ...l, id: generateId(), sets: (l.sets || []).map(s => ({ ...s, id: generateId() })) })) }; }
+        function mergeImportedWorkouts(incomingList) {
+            const existingById = new Map(workouts.map(w => [w.id, w])); const existingFingerprints = new Set(workouts.map(getWorkoutContentFingerprint));
+            let addedCount = 0; let skippedCount = 0;
+            for (const rawItem of incomingList) {
+                const normalized = normalizeWorkoutRecord(rawItem); const fingerprint = getWorkoutContentFingerprint(normalized);
+                if (existingById.has(normalized.id)) {
+                    if (getWorkoutContentFingerprint(existingById.get(normalized.id)) === fingerprint) { skippedCount++; continue; }
+                    const reassigned = cloneWorkoutWithFreshIds(normalized);
+                    workouts.push(reassigned); existingById.set(reassigned.id, reassigned); existingFingerprints.add(fingerprint); addedCount++;
+                } else if (existingFingerprints.has(fingerprint)) skippedCount++;
+                else { workouts.push(normalized); existingById.set(normalized.id, normalized); existingFingerprints.add(fingerprint); addedCount++; }
+            }
+            workouts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); saveWorkouts(); switchView('history');
+            showAlert('Import Complete', skippedCount > 0 ? `Added ${addedCount} workouts (${skippedCount} duplicates skipped).` : `Successfully merged ${addedCount} workouts.`);
+        }
+        function replaceWithImportedWorkouts(incomingList) {
+            workouts = incomingList.map(normalizeWorkoutRecord).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); saveWorkouts(); switchView('history');
+            showAlert('Import Complete', `Replaced history with ${workouts.length} workouts.`);
+        }
+        function closeImportModal() { document.getElementById('import-modal').classList.add('hidden'); pendingImportWorkouts = null; }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1. Attach all UI & Timer listeners first
+            document.getElementById('timer-cancel')?.addEventListener('click', closeTimerModal);
+            document.querySelectorAll('.timer-preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => startNativeTimer(btn.getAttribute('data-time')));
+            });
+
+            document.getElementById('back-btn').addEventListener('click', () => switchView('history'));
+            document.getElementById('header-brand').addEventListener('click', () => { if (currentView === 'workout') openEditWorkoutModal(); else if (currentView !== 'history') switchView('history'); });
+            document.getElementById('header-action-btn').addEventListener('click', openNewWorkoutModal);
+
+            document.getElementById('more-menu-btn').addEventListener('click', (e) => { e.stopPropagation(); toggleMoreMenu(); });
+            document.addEventListener('click', (e) => { if (!e.target.closest('#more-menu-wrapper')) toggleMoreMenu(false); });
+            document.getElementById('export-btn').addEventListener('click', () => { toggleMoreMenu(false); openExportModal(workouts, 'json', 'workout'); });
+            document.getElementById('import-btn').addEventListener('click', () => { toggleMoreMenu(false); document.getElementById('import-file-input').value = ''; document.getElementById('import-file-input').click(); });
+
+            document.getElementById('import-file-input').addEventListener('change', (e) => {
+                const file = e.target.files?.[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const extracted = extractWorkoutsFromBackup(JSON.parse(String(event.target.result || '').replace(/^\uFEFF/, '').trim()));
+                        if (!Array.isArray(extracted) || extracted.length === 0) return showAlert('Invalid Backup', 'File is missing or does not contain a valid workout list.');
+                        if (workouts.length === 0) replaceWithImportedWorkouts(extracted);
+                        else { pendingImportWorkouts = extracted; document.getElementById('import-modal-message').textContent = `Found ${extracted.length} workouts. Merge with existing history or replace it?`; document.getElementById('import-modal').classList.remove('hidden'); }
+                    } catch (err) { showAlert('Import Failed', 'Could not read JSON file.'); }
+                }; reader.readAsText(file);
+            });
+
+            document.getElementById('tab-workouts-btn').addEventListener('click', () => { if (currentView !== 'history') switchView('history'); });
+            document.getElementById('tab-exercises-btn').addEventListener('click', () => { if (currentView !== 'exercise-history') switchView('exercise-history'); });
+
+            document.getElementById('new-workout-name-input').addEventListener('input', (e) => document.getElementById('clear-new-workout-name-btn').classList.toggle('hidden', !e.target.value));
+            document.getElementById('clear-new-workout-name-btn').addEventListener('click', () => { document.getElementById('new-workout-name-input').value = ''; document.getElementById('clear-new-workout-name-btn').classList.add('hidden'); document.getElementById('new-workout-name-input').focus(); });
+            document.getElementById('date-cancel').addEventListener('click', closeNewWorkoutModal); document.getElementById('date-ok').addEventListener('click', createWorkoutFromModal);
+            document.getElementById('new-workout-name-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); createWorkoutFromModal(); } });
+
+            document.getElementById('edit-cancel').addEventListener('click', closeEditModal); document.getElementById('edit-ok').addEventListener('click', saveEditModal);
+            document.getElementById('edit-name-input').addEventListener('input', updateEditAutocomplete);
+            document.getElementById('edit-name-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveEditModal(); } });
+            document.getElementById('edit-autocomplete-list').addEventListener('click', (e) => { const li = e.target.closest('li[data-suggestion-name]'); if (li) { document.getElementById('edit-name-input').value = li.getAttribute('data-suggestion-name'); editState.mode = li.getAttribute('data-suggestion-mode') || editState.mode; editState.unit = li.getAttribute('data-suggestion-unit') || editState.unit; updateEditExerciseOptionsUI(); hideEditAutocomplete(); } });
+            document.getElementById('edit-mode-strength-btn').addEventListener('click', () => { editState.mode = 'strength'; if (editState.unit !== 'lb' && editState.unit !== 'kg') editState.unit = 'lb'; updateEditExerciseOptionsUI(); });
+            document.getElementById('edit-mode-cardio-btn').addEventListener('click', () => { editState.mode = 'cardio'; if (editState.unit !== 'mi' && editState.unit !== 'km') editState.unit = 'mi'; updateEditExerciseOptionsUI(); });
+            document.querySelectorAll('#edit-modal .edit-unit-option-btn').forEach(btn => btn.addEventListener('click', () => { editState.unit = btn.getAttribute('data-unit'); updateEditExerciseOptionsUI(); }));
+
+            const newLiftInput = document.getElementById('new-lift-name');
+            newLiftInput.addEventListener('input', updateAutocomplete); newLiftInput.addEventListener('blur', () => setTimeout(hideAutocomplete, 150));
+            document.getElementById('autocomplete-list').addEventListener('click', (e) => { const li = e.target.closest('li[data-suggestion-name]'); if (li) { const name = li.getAttribute('data-suggestion-name'); newLiftInput.value = name; hideAutocomplete(); openExerciseTypeModal(name); } });
+            document.getElementById('add-lift-form').addEventListener('submit', (e) => { e.preventDefault(); const rawName = newLiftInput.value.trim(); if (rawName) { hideAutocomplete(); openExerciseTypeModal(rawName); } });
+
+            document.getElementById('mode-strength-btn').addEventListener('click', () => { pendingExerciseMode = 'strength'; if (pendingExerciseUnit !== 'lb' && pendingExerciseUnit !== 'kg') pendingExerciseUnit = 'lb'; updateExerciseTypeModalUI(); });
+            document.getElementById('mode-cardio-btn').addEventListener('click', () => { pendingExerciseMode = 'cardio'; if (pendingExerciseUnit !== 'mi' && pendingExerciseUnit !== 'km') pendingExerciseUnit = 'mi'; updateExerciseTypeModalUI(); });
+            document.querySelectorAll('#exercise-type-modal .unit-option-btn').forEach(btn => btn.addEventListener('click', () => { pendingExerciseUnit = btn.getAttribute('data-unit'); updateExerciseTypeModalUI(); }));
+            document.getElementById('exercise-type-cancel').addEventListener('click', closeExerciseTypeModal); document.getElementById('exercise-type-ok').addEventListener('click', confirmAddExercise);
+
+            document.getElementById('confirm-cancel').addEventListener('click', closeConfirmModal); document.getElementById('confirm-ok').addEventListener('click', () => { const cb = confirmCallback; closeConfirmModal(); if (typeof cb === 'function') cb(); });
+            document.getElementById('alert-ok').addEventListener('click', closeAlertModal);
+            
+            document.getElementById('import-merge-btn').addEventListener('click', () => { const list = pendingImportWorkouts; closeImportModal(); if (list) mergeImportedWorkouts(list); });
+            document.getElementById('import-replace-btn').addEventListener('click', () => { const list = pendingImportWorkouts; closeImportModal(); if (list) replaceWithImportedWorkouts(list); });
+            document.getElementById('import-cancel-btn').addEventListener('click', closeImportModal);
+
+            document.getElementById('export-cancel').addEventListener('click', closeExportModal);
+            document.getElementById('export-ok').addEventListener('click', () => {
+                if (!pendingExportWorkouts) return;
+                const filename = document.getElementById('export-filename-input').value; const list = pendingExportWorkouts; const format = pendingExportFormat; closeExportModal();
+                if (format === 'txt') { const inc = document.getElementById('ai-include-prompt-checkbox').checked; performTextDownload(aiExportState.type === 'exercises' ? generateAiExerciseText(list, inc) : generateAiWorkoutText(list, inc), filename); }
+                else performJsonDownload(list, filename);
+            });
+            document.getElementById('export-choice-cancel').addEventListener('click', closeExportChoiceModal);
+            document.getElementById('choose-export-ai-btn').addEventListener('click', () => { const list = aiExportState.items; closeExportChoiceModal(); openAiExportModal(list, 'workouts'); });
+            document.getElementById('choose-export-json-btn').addEventListener('click', () => { const list = aiExportState.items; closeExportChoiceModal(); openExportModal(list, 'json', 'workout'); });
+            document.getElementById('ai-export-close').addEventListener('click', closeAiExportModal); document.getElementById('ai-include-prompt-checkbox').addEventListener('change', refreshAiExportTextarea);
+            document.getElementById('ai-download-txt-btn').addEventListener('click', () => { const list = aiExportState.items; const lbl = aiExportState.type === 'exercises' ? 'exercise' : 'workout'; closeAiExportModal(); openExportModal(list, 'txt', lbl); });
+            document.getElementById('ai-copy-btn').addEventListener('click', () => {
+                const textarea = document.getElementById('ai-export-textarea'); textarea.focus(); textarea.select(); textarea.setSelectionRange(0, textarea.value.length);
+                let copied = false; try { copied = document.execCommand('copy'); } catch (err) { copied = false; }
+                const btn = document.getElementById('ai-copy-btn'); const orig = btn.innerHTML; btn.innerHTML = copied ? '<i class="fa-solid fa-check"></i> Copied!' : '<i class="fa-solid fa-check"></i> Selected!'; setTimeout(() => btn.innerHTML = orig, 1800);
+            });
+
+            document.getElementById('toggle-select-mode-btn').addEventListener('click', () => toggleSelectionMode());
+            document.getElementById('select-all-btn').addEventListener('click', () => { const all = workouts.length > 0 && workouts.every(w => selectedWorkoutIds.has(w.id)); if (all) selectedWorkoutIds.clear(); else workouts.forEach(w => selectedWorkoutIds.add(w.id)); renderHistoryView(); });
+            document.getElementById('export-selected-btn').addEventListener('click', () => openExportChoiceModal(workouts.filter(w => selectedWorkoutIds.has(w.id))));
+            document.getElementById('delete-selected-btn').addEventListener('click', () => { const count = selectedWorkoutIds.size; if (count === 0) return; showConfirm('Delete Selected Workouts', `Delete ${count} selected workouts?`, 'Delete', () => { workouts = workouts.filter(w => !selectedWorkoutIds.has(w.id)); selectedWorkoutIds.clear(); isSelectionMode = false; saveWorkouts(); switchView('history'); }); });
+
+            document.getElementById('workouts-list').addEventListener('click', (e) => {
+                const deleteBtn = e.target.closest('[data-action="delete-workout"]');
+                if (deleteBtn) { e.stopPropagation(); const wId = deleteBtn.getAttribute('data-workout-id'); showConfirm('Delete Workout', `Delete workout?`, 'Delete', () => { workouts = workouts.filter(w => w.id !== wId); saveWorkouts(); renderHistoryView(); }); return; }
+                const card = e.target.closest('.workout-card'); if (!card) return; const wId = card.getAttribute('data-workout-id');
+                if (isSelectionMode) { if (selectedWorkoutIds.has(wId)) selectedWorkoutIds.delete(wId); else selectedWorkoutIds.add(wId); renderHistoryView(); } else switchView('workout', wId);
+            });
+
+            const liftsContainer = document.getElementById('lifts-container');
+            liftsContainer.addEventListener('click', (e) => {
+                const workout = getActiveWorkout(); if (!workout) return;
+                const actionEl = e.target.closest('[data-action]'); if (!actionEl) return;
+                const action = actionEl.getAttribute('data-action'); const liftId = actionEl.getAttribute('data-lift-id'); const lift = workout.lifts.find(l => l.id === liftId);
+                if (action === 'add-set' && lift) { if (lift.mode === 'cardio') lift.sets.push({ id: generateId(), time: '', distance: '' }); else { const p = lift.sets[lift.sets.length - 1]; lift.sets.push({ id: generateId(), weight: p ? p.weight : '', reps: '' }); } saveWorkouts(); renderWorkoutView(); }
+                else if (action === 'delete-set' && lift) { const setId = actionEl.getAttribute('data-set-id'); lift.sets = lift.sets.filter(s => s.id !== setId); saveWorkouts(); renderWorkoutView(); }
+                else if (action === 'edit-lift' && lift) openEditLiftModal(liftId);
+                else if (action === 'delete-lift' && lift) showConfirm('Delete Exercise', `Remove "${lift.name}"?`, 'Delete', () => { workout.lifts = workout.lifts.filter(l => l.id !== liftId); saveWorkouts(); renderWorkoutView(); });
+            });
+
+            liftsContainer.addEventListener('keydown', (e) => {
+                const setInput = e.target.closest('.set-input');
+                if (setInput && e.key === 'Enter') {
+                    e.preventDefault();
+                    setInput.blur();
+                    return;
+                }
+                const input = e.target.closest('.time-microwave-input'); if (!input) return;
+                if (e.key === 'Backspace') { e.preventDefault(); input.value = formatMicrowaveTime(input.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, -1)); input.dispatchEvent(new Event('input', { bubbles: true })); return; }
+                if (e.ctrlKey || e.metaKey || e.altKey || ['Tab', 'Enter', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'].includes(e.key)) return;
+                if (!/^[0-9:]$/.test(e.key)) e.preventDefault();
+            });
+            liftsContainer.addEventListener('focusin', (e) => { const input = e.target.closest('.time-microwave-input'); if (input) setTimeout(() => { try { input.setSelectionRange(input.value.length, input.value.length); } catch(e) {} }, 0); });
+            liftsContainer.addEventListener('input', (e) => {
+                const input = e.target.closest('.set-input'); if (!input) return;
+                const workout = getActiveWorkout(); if (!workout) return;
+                const lift = workout.lifts.find(l => l.id === input.getAttribute('data-lift-id')); const set = lift?.sets.find(s => s.id === input.getAttribute('data-set-id')); if (!set) return;
+                const field = input.getAttribute('data-field');
+                if (field === 'time') { const f = formatMicrowaveTime(input.value); input.value = f; try { input.setSelectionRange(f.length, f.length); } catch(_) {} set.time = f; } else set[field] = input.value;
+                saveWorkouts();
+            });
+
+            // Auto-open Rest Timer when a new set is completed
+            liftsContainer.addEventListener('change', (e) => {
+                const input = e.target.closest('.set-input'); if (!input) return;
+                const field = input.getAttribute('data-field');
+                const setId = input.getAttribute('data-set-id');
+                const val = input.value.trim();
+                if (!val || timerPromptedSetIds.has(setId)) return;
+
+                if (field === 'reps' || field === 'time' || field === 'distance') {
+                    timerPromptedSetIds.add(setId);
+                    openTimerModal();
+                }
+            });
+
+            const exerciseSearchInput = document.getElementById('exercise-history-search');
+            const clearExerciseSearchBtn = document.getElementById('clear-exercise-search-btn');
+            exerciseSearchInput.addEventListener('input', () => { exerciseSearchQuery = exerciseSearchInput.value; clearExerciseSearchBtn.classList.toggle('hidden', !exerciseSearchQuery); renderExerciseHistoryView(); });
+            clearExerciseSearchBtn.addEventListener('click', () => { exerciseSearchQuery = ''; exerciseSearchInput.value = ''; clearExerciseSearchBtn.classList.add('hidden'); renderExerciseHistoryView(); });
+            document.getElementById('toggle-expand-all-exercises-btn').addEventListener('click', () => {
+                const all = buildExerciseHistoryGroups(); const q = exerciseSearchQuery.trim().toLowerCase(); const f = q ? all.filter(g => g.name.toLowerCase().includes(q)) : all;
+                if (f.length > 0 && f.every(g => expandedExerciseKeys.has(g.key))) f.forEach(g => expandedExerciseKeys.delete(g.key)); else f.forEach(g => expandedExerciseKeys.add(g.key));
+                renderExerciseHistoryView();
+            });
+            document.getElementById('toggle-exercise-select-mode-btn').addEventListener('click', () => toggleExerciseSelectionMode());
+            document.getElementById('select-all-exercises-btn').addEventListener('click', () => {
+                const all = buildExerciseHistoryGroups(); const q = exerciseSearchQuery.trim().toLowerCase(); const f = q ? all.filter(g => g.name.toLowerCase().includes(q)) : all;
+                if (f.length > 0 && f.every(g => selectedExerciseKeys.has(g.key))) f.forEach(g => selectedExerciseKeys.delete(g.key)); else f.forEach(g => selectedExerciseKeys.add(g.key));
+                renderExerciseHistoryView();
+            });
+            document.getElementById('export-selected-exercises-ai-btn').addEventListener('click', () => {
+                const s = buildExerciseHistoryGroups().filter(g => selectedExerciseKeys.has(g.key));
+                if (s.length === 0) return showAlert('Nothing Selected', 'Please select at least one exercise to generate a prompt.');
+                openAiExportModal(s, 'exercises');
+            });
+            document.getElementById('exercise-history-list').addEventListener('click', (e) => {
+                if (isExerciseSelectionMode) { const card = e.target.closest('.exercise-history-card'); if (!card) return; const k = card.getAttribute('data-exercise-key'); if (selectedExerciseKeys.has(k)) selectedExerciseKeys.delete(k); else selectedExerciseKeys.add(k); renderExerciseHistoryView(); return; }
+                const openW = e.target.closest('[data-action="open-workout-from-history"]'); if (openW) { switchView('workout', openW.getAttribute('data-workout-id')); return; }
+                const tog = e.target.closest('[data-action="toggle-exercise-group"]'); if (tog) { const k = tog.getAttribute('data-exercise-key'); if (expandedExerciseKeys.has(k)) expandedExerciseKeys.delete(k); else expandedExerciseKeys.add(k); renderExerciseHistoryView(); }
+            });
+
+            // 2. Load data & render initial view
+            try {
+                loadWorkouts();
+                switchView('history');
+            } catch (err) {
+                console.error('Initial render error:', err);
+            }
+
+            // 3. Network & Offline Service Worker Setup
+            const OFFLINE_CACHE = 'lift-tracker-offline-v4';
+            function updateNetworkStatus() { document.getElementById('offline-badge')?.classList.toggle('hidden', navigator.onLine); }
+            window.addEventListener('online', updateNetworkStatus); window.addEventListener('offline', updateNetworkStatus); updateNetworkStatus();
+            async function warmOfflineCache(showFeedback = false) {
+                if (!('caches' in window)) return false;
+                try {
+                    const cache = await caches.open(OFFLINE_CACHE);
+                    await Promise.all(['./', './index.html', './apple-touch-icon.png'].map(async (url) => { const res = await fetch(url, { cache: 'reload' }); if (res.ok) await cache.put(url, res); }));
+                    await Promise.allSettled(['https://cdn.tailwindcss.com', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css', 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'].map(url => cache.add(url)));
+                    if (showFeedback) window.location.reload(); return true;
+                } catch (_) { return false; }
+            }
+            if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+                navigator.serviceWorker.register('./sw.js', { scope: './' }).then(async (reg) => {
+                    await warmOfflineCache(false);
+                    const markReady = () => { const dot = document.getElementById('offline-status-dot'); const txt = document.getElementById('offline-status-text'); if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0'; if (txt) txt.textContent = 'Offline ready (tap to refresh)'; };
+                    if (reg.active) markReady(); else if (reg.installing || reg.waiting) (reg.installing || reg.waiting).addEventListener('statechange', (e) => { if (e.target.state === 'activated') markReady(); });
+                }).catch(() => { const dot = document.getElementById('offline-status-dot'); const txt = document.getElementById('offline-status-text'); if (dot) dot.className = 'w-2 h-2 rounded-full bg-red-400 shrink-0'; if (txt) txt.textContent = 'sw.js missing in repo'; });
+            } else if (document.getElementById('offline-status-text')) document.getElementById('offline-status-text').textContent = 'Online mode';
+            if (document.getElementById('refresh-offline-btn')) document.getElementById('refresh-offline-btn').addEventListener('click', async () => {
+                toggleMoreMenu(false); if (!navigator.onLine) return showAlert('Currently Offline', 'You are already offline. Local workouts are saved on this phone.');
+                if (!(await warmOfflineCache(true))) showAlert('Cache Failed', 'Make sure both index.html and sw.js are in your repository.');
+            });
+        });
+    </script>
+</body>
+</html>
