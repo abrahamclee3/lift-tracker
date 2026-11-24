@@ -68,6 +68,10 @@
                 </div>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
+                <button type="button" id="header-timer-btn" class="text-xs text-gray-600 hover:text-indigo-600 font-semibold btn-transition px-2.5 py-2 rounded-xl bg-gray-100 hover:bg-indigo-50 flex items-center gap-1.5" title="Rest Timer" aria-label="Toggle Rest Timer">
+                    <i class="fa-solid fa-stopwatch text-sm"></i>
+                    <span id="header-timer-label" class="tabular-nums">Rest</span>
+                </button>
                 <button type="button" id="header-action-btn" class="text-sm text-indigo-600 hover:text-indigo-800 font-semibold btn-transition px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100">
                     <i class="fa-solid fa-plus mr-1"></i> New
                 </button>
@@ -94,6 +98,46 @@
                 <input type="file" id="import-file-input" accept=".json,application/json" class="hidden">
             </div>
         </header>
+
+        <!-- Collapsible Rest Timer Drawer -->
+        <div id="rest-timer-panel" class="hidden bg-white border-b border-gray-200 px-4 py-3 shadow-sm z-20 shrink-0">
+            <div class="flex items-center justify-between gap-2 mb-2.5">
+                <div class="flex items-center gap-2">
+                    <button type="button" id="rt-minus-btn" class="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold btn-transition" aria-label="Subtract 15 seconds">-15s</button>
+                    <div id="rt-display" class="text-2xl font-bold text-gray-900 tabular-nums tracking-tight min-w-[74px] text-center">01:30</div>
+                    <button type="button" id="rt-plus-btn" class="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold btn-transition" aria-label="Add 15 seconds">+15s</button>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" id="rt-start-btn" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs btn-transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-play text-[10px]"></i> Start
+                    </button>
+                    <button type="button" id="rt-stop-btn" disabled class="px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold btn-transition disabled:opacity-40 disabled:pointer-events-none">
+                        Stop
+                    </button>
+                    <button type="button" id="rt-close-btn" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg btn-transition" aria-label="Hide rest timer">
+                        <i class="fa-solid fa-chevron-up text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Rest Presets -->
+            <div class="grid grid-cols-5 gap-1.5 mb-2">
+                <button type="button" data-rest-sec="60" class="rt-preset-btn py-1.5 rounded-lg bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 text-xs font-semibold btn-transition">1:00</button>
+                <button type="button" data-rest-sec="90" class="rt-preset-btn py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold btn-transition">1:30</button>
+                <button type="button" data-rest-sec="120" class="rt-preset-btn py-1.5 rounded-lg bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 text-xs font-semibold btn-transition">2:00</button>
+                <button type="button" data-rest-sec="180" class="rt-preset-btn py-1.5 rounded-lg bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 text-xs font-semibold btn-transition">3:00</button>
+                <button type="button" data-rest-sec="300" class="rt-preset-btn py-1.5 rounded-lg bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 text-xs font-semibold btn-transition">5:00</button>
+            </div>
+
+            <!-- Auto-start Toggle & Platform Hint -->
+            <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                <label class="flex items-center gap-1.5 text-[11px] font-medium text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" id="rt-autostart-checkbox" class="w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300">
+                    <span>Auto-start on "+ Add Set"</span>
+                </label>
+                <span id="rt-platform-hint" class="text-[10px] text-gray-400 truncate"></span>
+            </div>
+        </div>
 
         <!-- Top Segmented Navigation Tabs (Workouts / Exercises) -->
         <div id="top-tabs-bar" class="bg-white border-b border-gray-200 px-4 py-2 shrink-0 z-10">
@@ -507,6 +551,9 @@
     <script>
         // Storage & App State
         const STORAGE_KEY = 'lift_tracker_workouts_v1';
+        const REST_SETTINGS_KEY = 'lift_tracker_rest_settings_v1';
+        const IOS_SHORTCUT_NAME = 'WebTimer';
+
         let workouts = [];
         let activeWorkoutId = null;
         let currentView = 'history'; // 'history' | 'workout' | 'exercise-history'
@@ -543,6 +590,15 @@
         // Confirm & Alert Callbacks
         let confirmCallback = null;
         let alertCallback = null;
+
+        // Rest Timer State
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        let restSettings = { defaultSeconds: 90, autoStartOnAddSet: false };
+        let restEndTime = 0;
+        let restIntervalId = null;
+        let restAudioCtx = null;
+        let restKeepAliveOsc = null;
 
         // Cryptographic UUID Generator (with fallback for non-HTTPS contexts)
         function generateId() {
@@ -602,6 +658,217 @@
             const minutes = capped.slice(-4, -2);
             const hours = capped.slice(0, -4);
             return `${hours}:${minutes}:${seconds}`;
+        }
+
+        // Rest Timer Helpers
+        function formatRestSeconds(totalSec) {
+            const safe = Math.max(0, Math.floor(totalSec));
+            const m = String(Math.floor(safe / 60)).padStart(2, '0');
+            const s = String(safe % 60).padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function loadRestSettings() {
+            try {
+                const raw = localStorage.getItem(REST_SETTINGS_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (typeof parsed.defaultSeconds === 'number' && parsed.defaultSeconds >= 15) {
+                        restSettings.defaultSeconds = parsed.defaultSeconds;
+                    }
+                    restSettings.autoStartOnAddSet = Boolean(parsed.autoStartOnAddSet);
+                }
+            } catch (_) {}
+        }
+
+        function saveRestSettings() {
+            try {
+                localStorage.setItem(REST_SETTINGS_KEY, JSON.stringify(restSettings));
+            } catch (_) {}
+        }
+
+        function updateRestPresetHighlight() {
+            document.querySelectorAll('.rt-preset-btn').forEach(btn => {
+                const sec = Number(btn.getAttribute('data-rest-sec'));
+                const isSelected = sec === restSettings.defaultSeconds;
+                btn.className = isSelected
+                    ? 'rt-preset-btn py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold btn-transition'
+                    : 'rt-preset-btn py-1.5 rounded-lg bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 text-xs font-semibold btn-transition';
+            });
+        }
+
+        function updateRestTimerUI(remainingSec = null) {
+            const isRunning = restIntervalId !== null;
+            const shownSec = remainingSec !== null ? remainingSec : restSettings.defaultSeconds;
+            const formatted = formatRestSeconds(shownSec);
+
+            const displayEl = document.getElementById('rt-display');
+            const headerBtn = document.getElementById('header-timer-btn');
+            const headerLabel = document.getElementById('header-timer-label');
+            const startBtn = document.getElementById('rt-start-btn');
+            const stopBtn = document.getElementById('rt-stop-btn');
+
+            if (displayEl) displayEl.textContent = formatted;
+            if (startBtn) startBtn.disabled = isRunning;
+            if (stopBtn) stopBtn.disabled = !isRunning;
+
+            if (headerBtn && headerLabel) {
+                if (isRunning) {
+                    headerBtn.className = 'text-xs text-white font-semibold btn-transition px-2.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-xs flex items-center gap-1.5';
+                    headerLabel.textContent = formatted;
+                } else {
+                    headerBtn.className = 'text-xs text-gray-600 hover:text-indigo-600 font-semibold btn-transition px-2.5 py-2 rounded-xl bg-gray-100 hover:bg-indigo-50 flex items-center gap-1.5';
+                    headerLabel.textContent = 'Rest';
+                }
+            }
+        }
+
+        function toggleRestTimerPanel(forceState = null) {
+            const panel = document.getElementById('rest-timer-panel');
+            if (!panel) return;
+            if (forceState === null) {
+                panel.classList.toggle('hidden');
+            } else {
+                panel.classList.toggle('hidden', !forceState);
+            }
+        }
+
+        // Android / Desktop: Sub-audible Web Audio prevents background tab freeze without pausing music
+        function startWebAudioAnchor() {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            restAudioCtx = new AudioCtx();
+            if (restAudioCtx.state === 'suspended') restAudioCtx.resume();
+
+            const osc = restAudioCtx.createOscillator();
+            const gain = restAudioCtx.createGain();
+            osc.frequency.value = 20;
+            gain.gain.value = 0.0001;
+            osc.connect(gain);
+            gain.connect(restAudioCtx.destination);
+            osc.start();
+            restKeepAliveOsc = osc;
+        }
+
+        function stopWebAudioAnchor() {
+            if (restKeepAliveOsc) {
+                try { restKeepAliveOsc.stop(); } catch (_) {}
+                restKeepAliveOsc = null;
+            }
+            if (restAudioCtx) {
+                restAudioCtx.close().catch(() => {});
+                restAudioCtx = null;
+            }
+        }
+
+        // Soft two-tone chime when app is open in the foreground
+        function playForegroundChime() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const now = ctx.currentTime;
+                [880, 1174.66].forEach((freq, i) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.001, now + i * 0.16);
+                    gain.gain.exponentialRampToValueAtTime(0.18, now + i * 0.16 + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.16 + 0.28);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now + i * 0.16);
+                    osc.stop(now + i * 0.16 + 0.3);
+                });
+                setTimeout(() => ctx.close().catch(() => {}), 800);
+            } catch (_) {}
+        }
+
+        async function triggerAndroidRestNotification(label) {
+            const msg = {
+                type: 'REST_TIMER_DONE',
+                title: 'Rest Complete',
+                body: `${label} rest finished — time for your next set.`
+            };
+
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage(msg);
+                return;
+            }
+
+            if ('serviceWorker' in navigator) {
+                try {
+                    const reg = await navigator.serviceWorker.ready;
+                    await reg.showNotification(msg.title, {
+                        body: msg.body,
+                        icon: './apple-touch-icon.png',
+                        badge: './apple-touch-icon.png',
+                        tag: 'lift-rest-timer',
+                        renotify: true,
+                        requireInteraction: true,
+                        vibrate: [300, 150, 300, 150, 400]
+                    });
+                } catch (_) {}
+            }
+        }
+
+        async function startRestTimer(seconds = restSettings.defaultSeconds, openPanel = true) {
+            const cleanSec = Math.max(5, Math.floor(seconds));
+            clearInterval(restIntervalId);
+            restIntervalId = null;
+            stopWebAudioAnchor();
+
+            restSettings.defaultSeconds = cleanSec;
+            saveRestSettings();
+            updateRestPresetHighlight();
+
+            const label = formatRestSeconds(cleanSec);
+            restEndTime = Date.now() + cleanSec * 1000;
+
+            if (openPanel) {
+                toggleRestTimerPanel(true);
+            }
+
+            if (isIOS) {
+                // Hand off countdown to iOS Clock via Apple Shortcut so it runs locked over music
+                window.location.href =
+                    `shortcuts://run-shortcut?name=${encodeURIComponent(IOS_SHORTCUT_NAME)}&input=text&text=${encodeURIComponent(cleanSec)}`;
+            } else {
+                if ('Notification' in window && Notification.permission === 'default') {
+                    await Notification.requestPermission();
+                }
+                startWebAudioAnchor();
+            }
+
+            restIntervalId = setInterval(async () => {
+                const remMs = Math.max(0, restEndTime - Date.now());
+                const remSec = Math.ceil(remMs / 1000);
+                updateRestTimerUI(remSec);
+
+                if (remMs === 0) {
+                    clearInterval(restIntervalId);
+                    restIntervalId = null;
+                    updateRestTimerUI(restSettings.defaultSeconds);
+
+                    if (!isIOS) {
+                        stopWebAudioAnchor();
+                        if (document.visibilityState === 'visible') {
+                            playForegroundChime();
+                        }
+                        await triggerAndroidRestNotification(label);
+                    }
+                }
+            }, 250);
+
+            updateRestTimerUI(cleanSec);
+        }
+
+        function stopRestTimer() {
+            clearInterval(restIntervalId);
+            restIntervalId = null;
+            stopWebAudioAnchor();
+            updateRestTimerUI(restSettings.defaultSeconds);
         }
 
         // Persistence & Normalization
@@ -1139,9 +1406,14 @@
                                 <h3 class="text-base font-bold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">${escapeHtml(lift.name)}</h3>
                                 <i class="fa-solid fa-pen text-[11px] text-gray-400 group-hover:text-indigo-600 transition-colors shrink-0"></i>
                             </button>
-                            <button type="button" data-action="delete-lift" data-lift-id="${escapeHtml(lift.id)}" class="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors shrink-0" aria-label="Delete exercise">
-                                <i class="fa-solid fa-trash-can text-sm"></i>
-                            </button>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button type="button" data-action="start-rest-timer" class="text-gray-400 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-indigo-50 transition-colors" title="Start Rest Timer" aria-label="Start rest timer">
+                                    <i class="fa-solid fa-stopwatch text-sm"></i>
+                                </button>
+                                <button type="button" data-action="delete-lift" data-lift-id="${escapeHtml(lift.id)}" class="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition-colors" aria-label="Delete exercise">
+                                    <i class="fa-solid fa-trash-can text-sm"></i>
+                                </button>
+                            </div>
                         </div>
 
                         ${(lift.sets && lift.sets.length > 0) ? `${columnHeaders}${setsHtml}` : `<p class="text-xs text-gray-400 text-center py-2 mb-2">No ${isCardio ? 'entries' : 'sets'} logged yet.</p>`}
@@ -2068,6 +2340,73 @@
         // Event Listeners Setup
         document.addEventListener('DOMContentLoaded', () => {
             loadWorkouts();
+            loadRestSettings();
+            updateRestPresetHighlight();
+            updateRestTimerUI();
+
+            const autoStartCheckbox = document.getElementById('rt-autostart-checkbox');
+            const platformHint = document.getElementById('rt-platform-hint');
+            if (autoStartCheckbox) {
+                autoStartCheckbox.checked = restSettings.autoStartOnAddSet;
+                autoStartCheckbox.addEventListener('change', () => {
+                    restSettings.autoStartOnAddSet = autoStartCheckbox.checked;
+                    saveRestSettings();
+                });
+            }
+            if (platformHint) {
+                platformHint.textContent = isIOS
+                    ? `iOS: "${IOS_SHORTCUT_NAME}" Shortcut`
+                    : 'Android/Web: Background Alert';
+            }
+
+            // Rest Timer Controls
+            document.getElementById('header-timer-btn').addEventListener('click', () => {
+                toggleRestTimerPanel();
+            });
+
+            document.getElementById('rt-close-btn').addEventListener('click', () => {
+                toggleRestTimerPanel(false);
+            });
+
+            document.getElementById('rt-start-btn').addEventListener('click', () => {
+                startRestTimer(restSettings.defaultSeconds, true);
+            });
+
+            document.getElementById('rt-stop-btn').addEventListener('click', () => {
+                stopRestTimer();
+            });
+
+            document.getElementById('rt-minus-btn').addEventListener('click', () => {
+                if (restIntervalId !== null) {
+                    restEndTime = Math.max(Date.now() + 1000, restEndTime - 15000);
+                    updateRestTimerUI(Math.ceil((restEndTime - Date.now()) / 1000));
+                } else {
+                    restSettings.defaultSeconds = Math.max(15, restSettings.defaultSeconds - 15);
+                    saveRestSettings();
+                    updateRestPresetHighlight();
+                    updateRestTimerUI();
+                }
+            });
+
+            document.getElementById('rt-plus-btn').addEventListener('click', () => {
+                if (restIntervalId !== null) {
+                    restEndTime += 15000;
+                    updateRestTimerUI(Math.ceil((restEndTime - Date.now()) / 1000));
+                } else {
+                    restSettings.defaultSeconds = Math.min(3600, restSettings.defaultSeconds + 15);
+                    saveRestSettings();
+                    updateRestPresetHighlight();
+                    updateRestTimerUI();
+                }
+            });
+
+            document.querySelectorAll('.rt-preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const sec = Number(btn.getAttribute('data-rest-sec'));
+                    startRestTimer(sec, true);
+                });
+            });
+
             switchView('history');
 
             // Header Navigation & Brand
@@ -2435,7 +2774,7 @@
                 }
             });
 
-            // Workout View Interactions (Add/Delete Set, Edit/Delete Exercise, Microwave Timer, Live Input Save)
+            // Workout View Interactions (Add/Delete Set, Edit/Delete Exercise, Rest Timer, Microwave Timer, Live Input Save)
             const liftsContainer = document.getElementById('lifts-container');
 
             liftsContainer.addEventListener('click', (e) => {
@@ -2449,7 +2788,9 @@
                 const liftId = actionEl.getAttribute('data-lift-id');
                 const lift = workout.lifts.find(l => l.id === liftId);
 
-                if (action === 'add-set' && lift) {
+                if (action === 'start-rest-timer') {
+                    startRestTimer(restSettings.defaultSeconds, true);
+                } else if (action === 'add-set' && lift) {
                     const isCardio = lift.mode === 'cardio';
                     if (isCardio) {
                         lift.sets.push({ id: generateId(), time: '', distance: '' });
@@ -2463,6 +2804,9 @@
                     }
                     saveWorkouts();
                     renderWorkoutView();
+                    if (restSettings.autoStartOnAddSet) {
+                        startRestTimer(restSettings.defaultSeconds, true);
+                    }
                 } else if (action === 'delete-set' && lift) {
                     const setId = actionEl.getAttribute('data-set-id');
                     lift.sets = lift.sets.filter(s => s.id !== setId);
@@ -2641,7 +2985,7 @@
             });
 
             // Network & Offline Service Worker Setup
-            const OFFLINE_CACHE = 'lift-tracker-offline-v3';
+            const OFFLINE_CACHE = 'lift-tracker-offline-v4';
             const offlineBadge = document.getElementById('offline-badge');
             const offlineStatusDot = document.getElementById('offline-status-dot');
             const offlineStatusText = document.getElementById('offline-status-text');
