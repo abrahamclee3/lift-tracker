@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lift-tracker-offline-v3';
+const CACHE_NAME = 'lift-tracker-offline-v4';
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -25,7 +25,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  // Network-First for page navigations (index.html) so GitHub updates show up right away
+  // Network-First for page navigations (index.html) so updates show up right away
   if (event.request.mode === 'navigate' || event.request.url.endsWith('index.html')) {
     event.respondWith(
       fetch(event.request, { cache: 'no-store' })
